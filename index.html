@@ -222,8 +222,59 @@
   .memory-card:not(.flipped):not(.matched):hover {
     transform: translateY(-4px);
   }
-  .memory-card:not(.flipped):not(.matched):hover .card-content {
-    filter: brightness(1.4) saturate(1.15);
+
+  /*
+    主卡邊框：改成整圈都亮，不再只是一小段弧——用一層略大於卡片的 ::before
+    鋪滿整圈 conic-gradient（每個角度都有基礎亮度，不會有全透明的死角），
+    再疊一個更亮的高光，靠 @property 讓角度被動畫平滑地轉一整圈，
+    視覺上是「整個框線都在發光、同時有一個更亮的光點繞著跑過整圈」。
+    用「疊兩層」取代之前的 mask-composite 挖空做法：
+    外層（::before）是沒被遮住的滿版發光圈，卡片本體蓋在上面只露出四周邊框，
+    不依賴相容性比較差的 mask-composite，到哪裡都看得到。
+  */
+  @property --meteor-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+  .memory-card { position: relative; }
+  .memory-card.is-main-hover::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 14px;
+    background: conic-gradient(from var(--meteor-angle),
+      rgba(255,210,120,0.95) 0deg,
+      rgba(255,225,160,0.4) 90deg,
+      rgba(255,225,160,0.25) 180deg,
+      rgba(255,225,160,0.4) 270deg,
+      rgba(255,210,120,0.95) 360deg);
+    animation: meteor-spin 2.2s linear infinite;
+    z-index: 0;
+  }
+  .memory-card.is-main-hover .card-content {
+    position: relative;
+    z-index: 1;
+  }
+  @keyframes meteor-spin {
+    to { --meteor-angle: 360deg; }
+  }
+
+  /*
+    漣漪：不再只對上下左右四個鄰居做事，改成對「所有在範圍內的卡」
+    都算一次格子距離（兩個方向的差值取較大者，像棋盤上國王走的步數），
+    距離每多 1 格，動畫延遲（--ripple-delay）就多加一點，
+    JS 幫每張卡個別設定好延遲時間，所有卡共用同一組 @keyframes，
+    視覺上就是一圈一圈往外擴散的光波，越外圈亮起來的時間越晚、效果也做得稍微淡一點。
+  */
+  @keyframes ripple-pulse {
+    0% { filter: brightness(1); box-shadow: none; }
+    35% { filter: brightness(var(--ripple-peak, 1.3)); box-shadow: 0 0 14px 2px rgba(255,220,150,var(--ripple-glow, 0.35)); }
+    100% { filter: brightness(1); box-shadow: none; }
+  }
+  .memory-card.ripple .card-content {
+    animation: ripple-pulse 0.7s ease-out;
+    animation-delay: var(--ripple-delay, 0s);
   }
 
   .card-content {
@@ -408,7 +459,7 @@
   </div>
 
   <div class="color-demo">
-    <h2>記憶翻牌（完整 52 張，A~K，四種花色，點數配對）<span style="font-size:11px; color:var(--ink-soft); font-weight:400;"> — v9</span></h2>
+    <h2>記憶翻牌（完整 52 張，A~K，四種花色，點數配對）<span style="font-size:11px; color:var(--ink-soft); font-weight:400;"> — v11</span></h2>
     <div class="memory-game" id="memoryGame"></div>
     <p class="game-status" id="gameStatus">翻兩張，點數相同就算配對（花色不用一樣）</p>
 
@@ -719,6 +770,95 @@
       });
 
       game.appendChild(card);
+    });
+
+    setupHoverGlow();
+  }
+
+  /*
+    鄰居偵測：flex-wrap 排版本身不知道「上下左右」是誰，
+    要靠讀每張卡實際排出來的位置（offsetTop / offsetLeft）自己算出格子座標。
+    同一個 offsetTop 當作同一列，同一列裡再依 offsetLeft 排出第幾欄，
+    排好之後才找得到「這張卡的上面、下面、左邊、右邊剛好是哪一張」。
+  */
+  function computeGrid() {
+    var cards = Array.prototype.slice.call(game.children);
+    if (!cards.length) return { grid: [], pos: new Map() };
+
+    var rowsMap = new Map(); // offsetTop -> [cards...]
+    cards.forEach(function(card){
+      var top = card.offsetTop;
+      if (!rowsMap.has(top)) rowsMap.set(top, []);
+      rowsMap.get(top).push(card);
+    });
+
+    var rowTops = Array.from(rowsMap.keys()).sort(function(a,b){ return a-b; });
+    var grid = rowTops.map(function(top){
+      return rowsMap.get(top).sort(function(a,b){ return a.offsetLeft - b.offsetLeft; });
+    });
+
+    var pos = new Map(); // card -> {row, col}
+    grid.forEach(function(row, r){
+      row.forEach(function(card, c){
+        pos.set(card, { row: r, col: c });
+      });
+    });
+
+    return { grid: grid, pos: pos };
+  }
+
+  function clearAllGlow() {
+    Array.prototype.forEach.call(game.children, function(card){
+      card.classList.remove('is-main-hover', 'ripple');
+      card.style.removeProperty('--ripple-delay');
+      card.style.removeProperty('--ripple-peak');
+      card.style.removeProperty('--ripple-glow');
+    });
+  }
+
+  /*
+    漣漪範圍設定：RIPPLE_RADIUS 決定波紋最多擴散到幾格外；
+    距離用「棋盤格距離」（兩個方向差值取較大者）算，
+    這樣擴散出去的形狀是一圈一圈的正方形外框，跟鍵盤燈效常見的同心擴散很接近。
+  */
+  var RIPPLE_RADIUS = 3;
+  var RIPPLE_STEP_DELAY = 0.09; // 每多一格，延遲多加幾秒才亮
+
+  function setupHoverGlow() {
+    var gridInfo = computeGrid();
+
+    Array.prototype.forEach.call(game.children, function(card){
+      card.addEventListener('mouseenter', function(){
+        // 視窗大小、卡牌尺寸改變過的話，排版可能跟著變，每次 hover 前重新算一次最準
+        gridInfo = computeGrid();
+        var info = gridInfo.pos.get(card);
+        if (!info) return;
+
+        clearAllGlow();
+        // 強制瀏覽器重排一次，確保等一下重新加上 ripple class 時動畫會從頭播放，
+        // 不會因為 class 沒真的被移除過而被當成「沒有變化」，動畫就不會播
+        void game.offsetWidth;
+
+        card.classList.add('is-main-hover');
+
+        var row = info.row, col = info.col;
+        gridInfo.pos.forEach(function(otherInfo, otherCard){
+          if (otherCard === card) return;
+          var dist = Math.max(Math.abs(otherInfo.row - row), Math.abs(otherInfo.col - col));
+          if (dist > RIPPLE_RADIUS) return;
+
+          // 越外圈，延遲越久才亮，亮度跟發光強度也隨距離遞減，越外圈越淡
+          var ratio = 1 - (dist - 1) / RIPPLE_RADIUS; // 1 = 最近一圈，趨近 0 = 最外圈
+          otherCard.classList.add('ripple');
+          otherCard.style.setProperty('--ripple-delay', (dist * RIPPLE_STEP_DELAY) + 's');
+          otherCard.style.setProperty('--ripple-peak', (1.1 + ratio * 0.3).toFixed(2));
+          otherCard.style.setProperty('--ripple-glow', (0.15 + ratio * 0.3).toFixed(2));
+        });
+      });
+
+      card.addEventListener('mouseleave', function(){
+        clearAllGlow();
+      });
     });
   }
 
