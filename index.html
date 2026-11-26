@@ -180,30 +180,178 @@
   }
 
   /*
-    五排顏色方塊：每一排都是獨立的 flex container（display: flex），
-    裡面放同一組六個顏色，只是排列順序不同——
-    flex-direction 預設就是 row，所以每排自然是橫向排列，
-    flex:1 讓六個方塊平分這一排的寬度。
-    滑鼠移上去變色是單純的 :hover + filter，跟 flex 本身無關，
-    只是順便展示「flex 排版」跟「hover 視覺效果」可以疊加，互不干擾。
+    記憶翻牌遊戲：
+    .memory-game 本身是 flex container（display: flex + flex-wrap: wrap），
+    這才是這個遊戲裡 flex 真正有用到的地方——卡片數量固定，
+    但容器寬度會因為視窗大小而變，裝不下一整排時，
+    靠 flex-wrap 自動把多的卡片摺到下一行，跟之前「可拖曳縮放容器」是同一個道理。
+    每張卡片「翻面」的動畫，靠的是 perspective + rotateY + backface-visibility，
+    這一段完全是 transform 的領域，跟 flex 無關，老實說清楚，不要混為一談。
   */
-  .color-demo { margin-top: 32px; }
-  .color-demo h2 { font-size: 15px; margin: 0 0 14px; }
-  .color-row {
+  .memory-game {
     display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    align-items: flex-start;
+    align-content: flex-start;
   }
-  .color-block {
-    flex: 1;
-    height: 60px;
-    border-radius: 8px;
+
+  /*
+    尺寸系統整個重寫：只有這一個地方定義卡片寬度跟字體基準，
+    底下所有角落索引、花色圖案的大小，全部改用 em 單位去繼承這裡的 font-size，
+    不再各自寫一次 calc() —— 這樣不會再出現「改了寬度，但某個地方的字體忘記一起改」
+    這種各處各自為政、沒同步的狀況，因為其他地方根本沒有自己的數字可以漏改。
+  */
+  /*
+    翻牌效果整個換掉：不再用 perspective + backface-visibility 那套 3D 技巧——
+    那套東西在部分瀏覽器/渲染環境下會讓卡片整個「消失」（只剩邊框線），
+    已經實際截圖驗證過這個現象，不是排版或尺寸問題，是這個技巧本身不穩。
+    現在改成單純的 2D 做法：點擊時先把卡片橫向壓扁成 scaleX(0)，
+    壓扁到看不見的那一刻，用 JS 把裡面的內容換成正面或背面，
+    再把 scaleX 撐開回 1 —— 肉眼看起來一樣像「翻面」，但全程只有最基本的
+    transform: scaleX()，不依賴任何 3D、任何瀏覽器特有行為，到哪裡都穩定能看到。
+  */
+  .memory-card {
+    flex: 0 0 var(--card-width, 126px);
+    height: calc(var(--card-width, 126px) * 1.41667);
+    font-size: calc(var(--card-width, 126px) / 10);
     cursor: pointer;
-    transition: filter 0.2s ease, transform 0.15s ease;
+    box-sizing: border-box;
   }
-  .color-block:hover {
-    filter: brightness(1.4) saturate(1.15);
-    transform: translateY(-3px);
+  .memory-card:not(.flipped):not(.matched):hover {
+    transform: translateY(-4px);
+  }
+
+  .card-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border-radius: 10px;
+    border: 2px solid var(--line);
+    overflow: hidden;
+    transition: transform 0.15s ease;
+  }
+
+  .card-content.is-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: repeating-linear-gradient(45deg, #3d6b8a, #3d6b8a 6px, #2c5168 6px, #2c5168 12px);
+    border-color: rgba(255,255,255,0.6);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+  }
+  /* 中間加一個白色菱形外框當卡牌背面的標誌圖案，讓它一眼就能認出是「一張卡片」 */
+  .card-content.is-back::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 34px; height: 34px;
+    border: 2px solid rgba(255,255,255,0.85);
+    transform: translate(-50%, -50%) rotate(45deg);
+  }
+  .card-content.is-front {
+    background: var(--card-bg, #fff);
+  }
+
+  /*
+    角落索引：真實撲克牌最關鍵的辨識特徵——左上角一組點數+花色，
+    右下角再放一組一模一樣的，但整個轉 180 度（真卡牌就是這樣設計，
+    不管卡片在手上朝哪個方向，兩個角落一定有一組是正的）。
+  */
+  .corner {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.1;
+  }
+  .corner-tl { top: 6px; left: 7px; }
+  .corner-br { bottom: 6px; right: 7px; transform: rotate(180deg); }
+  /* 13px、11px 是以 100px 卡寬為基準調出來的，卡寬變大/變小時用比例一起縮放 */
+  .corner-rank { font-size: 1.3em; font-weight: 600; }
+  .corner-suit { font-size: 1.1em; }
+
+  /* 中間的花色排列區，點數卡的圖案都定位在這塊範圍裡 */
+  .pip-field {
+    position: absolute;
+    top: 24px; left: 18px; right: 18px; bottom: 24px;
+  }
+  .pip {
+    position: absolute;
+    transform-origin: center;
+  }
+  .pip-icon { font-size: 1.8em; }
+
+  .face-letter {
+    position: absolute;
+    top: 24px; left: 18px; right: 18px; bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3em;
+    font-weight: 600;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  /*
+    自訂圖片疊在「預設樣式上面」，用 ::before 當一層獨立的圖層：
+    --back-img / --front-img 沒設定時是 none，完全看不到這層，只看到預設樣式；
+    一旦使用者選了圖片，這層會疊上去，opacity 滑桿控制疊多少，
+    0 = 完全看不到圖片（只剩預設樣式），1 = 圖片完全蓋過預設樣式。
+  */
+  .card-content.is-back::before, .card-content.is-front::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--back-img, none);
+    background-size: cover;
+    background-position: center;
+    opacity: var(--back-img-opacity, 1);
+  }
+  .card-content.is-front::before {
+    background-image: var(--front-img, none);
+    opacity: var(--front-img-opacity, 1);
+  }
+  /* 只設 z-index，不要再設 position —— .corner / .pip-field / .face-letter
+     各自已經宣告了 position: absolute，这裡重複宣告 position 只會因為
+     「優先權相同、但排在後面」而蓋掉它們，就是上一次那個 bug 的成因 */
+  .card-content > * {
+    z-index: 1;
+  }
+  .memory-card.matched .card-content.is-front {
+    background: rgba(74,122,92,0.18);
+  }
+
+  .suit-icon { line-height: 1; }
+  .suit-black { color: #1a1a1a; }
+  .suit-red { color: #c0392b; }
+
+  /* 方塊花色改成鳶形（不是傳統對稱的菱形），用 clip-path 畫：
+     上半段比下半段短，製造出「頭小尾大」的不對稱感。
+     角落索引用的版本縮小很多，中間排列用的版本也比原本單一大圖示小一些。 */
+  .kite-shape {
+    display: inline-block;
+    background: #c0392b;
+    clip-path: polygon(50% 6%, 78% 40%, 50% 94%, 22% 40%);
+  }
+  .kite-shape.corner-suit { width: 0.9em; height: 1.2em; }
+  .kite-shape.pip-icon { width: 1.6em; height: 2.1em; }
+
+  .joker-label {
+    font-size: 15px;
+    font-weight: 500;
+    color: #6a4a8a;
+    letter-spacing: 0.1em;
+  }
+
+  .game-status {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--ink-soft);
   }
 
   .live-math {
@@ -257,8 +405,39 @@
   </div>
 
   <div class="color-demo">
-    <h2>同一組顏色，五排不同排列順序（滑鼠移上去變亮）</h2>
-    <div id="colorRows"></div>
+    <h2>記憶翻牌（完整 52 張，A~K，四種花色，點數配對）<span style="font-size:11px; color:var(--ink-soft); font-weight:400;"> — v8</span></h2>
+    <div class="memory-game" id="memoryGame"></div>
+    <p class="game-status" id="gameStatus">翻兩張，點數相同就算配對（花色不用一樣）</p>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="cardSizeInput">卡牌大小</label>
+        <input type="number" id="cardSizeInput" min="70" max="500" step="10" value="126">
+        <span class="val">px</span>
+      </div>
+      <div class="control-group">
+        <label for="rankCountInput">點數種類</label>
+        <input type="number" id="rankCountInput" min="1" max="13" step="1" value="13">
+        <span class="val" id="totalCardVal">(52 張)</span>
+      </div>
+      <div class="control-group">
+        <label for="backImgInput">背面圖片</label>
+        <input type="file" id="backImgInput" accept="image/*">
+      </div>
+      <div class="control-group">
+        <label for="backOpacityInput">背面透明度</label>
+        <input type="number" id="backOpacityInput" min="0" max="1" step="0.05" value="1">
+      </div>
+      <div class="control-group">
+        <label for="frontImgInput">正面圖片</label>
+        <input type="file" id="frontImgInput" accept="image/*">
+      </div>
+      <div class="control-group">
+        <label for="frontOpacityInput">正面透明度</label>
+        <input type="number" id="frontOpacityInput" min="0" max="1" step="0.05" value="1">
+      </div>
+      <button class="reset-btn" id="resetImgBtn">還原預設</button>
+    </div>
   </div>
 
   <div class="lesson">
@@ -357,34 +536,251 @@
 })();
 
 /*
-  五排顏色方塊：用同一組六色，照五種不同順序排出來。
-  用迴圈產生，而不是手動複製貼上六個 div 五次——
-  這樣顏色或排數要調整時，只要改這裡的資料，不用一行一行改 HTML。
+  記憶翻牌遊戲邏輯（最常見的玩法）：
+  配對規則是「點數相同就算配對，花色不用一樣」，
+  所以不用另外複製牌面湊對——標準一副牌本來就是 4 種花色、每個點數各一張，
+  同一個點數天生就有 4 張（4 種花色），彼此之間就能互相配對，
+  不需要「自己再複製一份自己」這種額外步驟。
+  抓 A~8 共 8 個點數 × 4 花色 = 32 張，是最多人玩的規模（不會太長、也不會太短）。
 */
 (function(){
-  var baseColors = ['#3d6b8a', '#4a7a5c', '#8a6a3d', '#6a4a8a', '#8a4a5c', '#4a5a8a'];
+  var suits = ['spade', 'heart', 'diamond', 'club'];
+  var allRanks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
-  // 五種排列順序（都是同一組六個顏色的索引，只是順序不同）
-  var orders = [
-    [0, 1, 2, 3, 4, 5], // 原始順序
-    [1, 2, 3, 4, 5, 0], // 整排往前挪一格
-    [2, 3, 4, 5, 0, 1], // 再挪一格
-    [5, 4, 3, 2, 1, 0], // 完全反過來
-    [0, 2, 4, 1, 3, 5]  // 間隔跳著排
+  /*
+    每個點數的花色排列位置（x、y 是百分比，r 是要不要轉 180 度）。
+    這不是照抄某個特定品牌撲克牌的精確座標，是照真實撲克牌的通用邏輯重新畫的：
+    左右兩欄 + 視點數增加逐漸加列，下半部的圖案統一轉 180 度
+    （這樣不管卡片朝哪邊看，都有圖案是正的，跟真卡牌同一個道理）。
+  */
+  var pipLayouts = {
+    1: [{x:50,y:50,r:0}],
+    2: [{x:50,y:18,r:0},{x:50,y:82,r:1}],
+    3: [{x:50,y:18,r:0},{x:50,y:50,r:0},{x:50,y:82,r:1}],
+    4: [{x:30,y:18,r:0},{x:70,y:18,r:0},{x:30,y:82,r:1},{x:70,y:82,r:1}],
+    5: [{x:30,y:18,r:0},{x:70,y:18,r:0},{x:50,y:50,r:0},{x:30,y:82,r:1},{x:70,y:82,r:1}],
+    6: [{x:30,y:18,r:0},{x:70,y:18,r:0},{x:30,y:50,r:0},{x:70,y:50,r:0},{x:30,y:82,r:1},{x:70,y:82,r:1}],
+    7: [{x:30,y:18,r:0},{x:70,y:18,r:0},{x:50,y:34,r:0},{x:30,y:50,r:0},{x:70,y:50,r:0},{x:30,y:82,r:1},{x:70,y:82,r:1}],
+    8: [{x:30,y:18,r:0},{x:70,y:18,r:0},{x:50,y:34,r:0},{x:30,y:50,r:0},{x:70,y:50,r:0},{x:50,y:66,r:1},{x:30,y:82,r:1},{x:70,y:82,r:1}],
+    9: [{x:30,y:14,r:0},{x:70,y:14,r:0},{x:30,y:36,r:0},{x:70,y:36,r:0},{x:50,y:50,r:0},{x:30,y:64,r:1},{x:70,y:64,r:1},{x:30,y:86,r:1},{x:70,y:86,r:1}],
+    10: [{x:30,y:12,r:0},{x:70,y:12,r:0},{x:50,y:28,r:0},{x:30,y:34,r:0},{x:70,y:34,r:0},{x:30,y:66,r:1},{x:70,y:66,r:1},{x:50,y:72,r:1},{x:30,y:88,r:1},{x:70,y:88,r:1}]
+  };
+
+  var symbolMap = { spade: '♠', heart: '♥', club: '♣' };
+
+  // 跟手風琴 .p1~.p6 用的是同一組顏色（淺色、深色各一個，做成斜角漸層）
+  var backPalette = [
+    { a: '#3d6b8a', b: '#214257' },
+    { a: '#4a7a5c', b: '#27432f' },
+    { a: '#8a6a3d', b: '#563c21' },
+    { a: '#6a4a8a', b: '#3c2756' },
+    { a: '#8a4a5c', b: '#562733' },
+    { a: '#4a5a8a', b: '#27304f' }
   ];
 
-  var wrap = document.getElementById('colorRows');
+  function suitGlyph(face, sizeClass) {
+    if (face.suit === 'diamond') {
+      return '<span class="kite-shape ' + sizeClass + '"></span>';
+    }
+    var colorClass = (face.suit === 'heart') ? 'suit-red' : 'suit-black';
+    return '<span class="suit-icon ' + colorClass + ' ' + sizeClass + '">' + symbolMap[face.suit] + '</span>';
+  }
 
-  orders.forEach(function(order){
-    var row = document.createElement('div');
-    row.className = 'color-row';
-    order.forEach(function(colorIndex){
-      var block = document.createElement('div');
-      block.className = 'color-block';
-      block.style.backgroundColor = baseColors[colorIndex];
-      row.appendChild(block);
+  function renderFront(face) {
+    var corner =
+      '<div class="corner corner-tl"><span class="corner-rank">' + face.rank + '</span>' + suitGlyph(face, 'corner-suit') + '</div>' +
+      '<div class="corner corner-br"><span class="corner-rank">' + face.rank + '</span>' + suitGlyph(face, 'corner-suit') + '</div>';
+
+    var isFaceCard = (face.rank === 'J' || face.rank === 'Q' || face.rank === 'K');
+    if (isFaceCard) {
+      return corner + '<div class="face-letter">' + face.rank + '</div>';
+    }
+
+    var count = (face.rank === 'A') ? 1 : parseInt(face.rank, 10);
+    var layout = pipLayouts[count] || pipLayouts[1];
+    var pips = layout.map(function(p){
+      return '<span class="pip" style="left:' + p.x + '%; top:' + p.y + '%; transform: translate(-50%, -50%) rotate(' + (p.r ? 180 : 0) + 'deg);">' +
+             suitGlyph(face, 'pip-icon') + '</span>';
+    }).join('');
+
+    return corner + '<div class="pip-field">' + pips + '</div>';
+  }
+
+  var game = document.getElementById('memoryGame');
+  var status = document.getElementById('gameStatus');
+  var totalCardVal = document.getElementById('totalCardVal');
+  var deck = [];
+  var flippedCards = [];
+  var matchedCount = 0;
+  var locked = false;
+
+  /*
+    點數種類控制牌的總數：選幾種點數，就用那幾種（從 A 開始依序取），
+    每種點數本來就橫跨 4 種花色，所以總張數永遠是「點數種類 × 4」，
+    配對規則完全不用改，4 張同點數的牌本來就配得出 2 對。
+  */
+  function rebuildDeck(rankCount) {
+    var ranks = allRanks.slice(0, rankCount);
+
+    deck = [];
+    suits.forEach(function(suit){
+      ranks.forEach(function(rank){
+        deck.push({ suit: suit, rank: rank });
+      });
     });
-    wrap.appendChild(row);
+
+    // 洗牌（Fisher-Yates）
+    for (var i = deck.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = deck[i];
+      deck[i] = deck[j];
+      deck[j] = tmp;
+    }
+
+    flippedCards = [];
+    matchedCount = 0;
+    locked = false;
+    game.innerHTML = '';
+    status.textContent = '翻兩張，點數相同就算配對（花色不用一樣）';
+    if (totalCardVal) totalCardVal.textContent = '(' + deck.length + ' 張)';
+
+    deck.forEach(function(face){
+      var card = document.createElement('div');
+      card.className = 'memory-card';
+      card.dataset.rank = face.rank;
+
+      card.innerHTML = '<div class="card-content is-back"></div>';
+      var content = card.querySelector('.card-content');
+
+      // 隨機抽一個顏色當這張卡的背面底色，只設定一次，
+      // 之後翻面、翻回去都不會重抽，同一張卡的背面顏色是固定的
+      var pal = backPalette[Math.floor(Math.random() * backPalette.length)];
+      content.style.background = 'linear-gradient(135deg, ' + pal.a + ', ' + pal.b + ')';
+
+      /*
+        2D 翻面：先把 scaleX 壓到 0（橫向壓扁到看不見），
+        壓扁完成的那一刻換內容（從背面換成正面），再撐開回 1。
+        用 transitionend 監聽壓扁動畫何時結束，精準在那一刻換內容，
+        不是用固定的 setTimeout 猜時間。
+      */
+      function showFace(toFront) {
+        content.style.transform = 'scaleX(0)';
+        var handler = function(){
+          content.removeEventListener('transitionend', handler);
+          if (toFront) {
+            content.className = 'card-content is-front';
+            content.innerHTML = renderFront(face);
+          } else {
+            content.className = 'card-content is-back';
+            content.innerHTML = '';
+          }
+          content.style.transform = 'scaleX(1)';
+        };
+        content.addEventListener('transitionend', handler);
+      }
+      card._showFace = showFace; // 讓配對失敗時，外部也能呼叫這張卡自己的翻面函式
+
+      card.addEventListener('click', function(){
+        if (locked) return;
+        if (card.classList.contains('flipped') || card.classList.contains('matched')) return;
+        if (flippedCards.length >= 2) return;
+
+        card.classList.add('flipped');
+        showFace(true);
+        flippedCards.push(card);
+
+        if (flippedCards.length === 2) {
+          locked = true;
+          var a = flippedCards[0];
+          var b = flippedCards[1];
+          var isMatch = a.dataset.rank === b.dataset.rank;
+
+          setTimeout(function(){
+            if (isMatch) {
+              a.classList.add('matched');
+              b.classList.add('matched');
+              matchedCount += 2;
+              status.textContent = matchedCount === deck.length
+                ? '全部配對完成！'
+                : '配對成功，已完成 ' + (matchedCount / 2) + ' / ' + (deck.length / 2) + ' 對';
+            } else {
+              a.classList.remove('flipped');
+              b.classList.remove('flipped');
+              a._showFace(false);
+              b._showFace(false);
+            }
+            flippedCards = [];
+            locked = false;
+          }, 700);
+        }
+      });
+
+      game.appendChild(card);
+    });
+  }
+
+  rebuildDeck(13);
+
+  var rankCountInput = document.getElementById('rankCountInput');
+  rankCountInput.addEventListener('change', function(e){
+    var v = parseInt(e.target.value, 10);
+    if (isNaN(v) || v < 1) v = 1;
+    if (v > 13) v = 13;
+    e.target.value = v;
+    rebuildDeck(v);
+  });
+
+  /*
+    自訂圖片：用 FileReader 把使用者選的本機圖片讀成 data URI，
+    直接寫進 CSS 變數 --back-img / --front-img。
+    這裡完全不會跟外部網址那個「CSP 擋掉」的問題扯上關係——
+    因為圖片從頭到尾沒有經過任何網路請求，是瀏覽器直接讀本機檔案轉成文字資料，
+    跟之前討論「外部圖片網址在發布頁面會被擋」是兩回事。
+  */
+  var root = document.documentElement;
+  var cardSizeInput = document.getElementById('cardSizeInput');
+  cardSizeInput.addEventListener('input', function(e){
+    root.style.setProperty('--card-width', e.target.value + 'px');
+  });
+
+  var backImgInput = document.getElementById('backImgInput');
+  var frontImgInput = document.getElementById('frontImgInput');
+  var backOpacityInput = document.getElementById('backOpacityInput');
+  var frontOpacityInput = document.getElementById('frontOpacityInput');
+  var resetImgBtn = document.getElementById('resetImgBtn');
+
+  function loadImage(fileInput, cssVarName) {
+    fileInput.addEventListener('change', function(e){
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        root.style.setProperty(cssVarName, 'url(' + ev.target.result + ')');
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  loadImage(backImgInput, '--back-img');
+  loadImage(frontImgInput, '--front-img');
+
+  backOpacityInput.addEventListener('input', function(e){
+    root.style.setProperty('--back-img-opacity', e.target.value);
+  });
+  frontOpacityInput.addEventListener('input', function(e){
+    root.style.setProperty('--front-img-opacity', e.target.value);
+  });
+
+  resetImgBtn.addEventListener('click', function(){
+    root.style.removeProperty('--back-img');
+    root.style.removeProperty('--front-img');
+    root.style.removeProperty('--back-img-opacity');
+    root.style.removeProperty('--front-img-opacity');
+    root.style.removeProperty('--card-width');
+    backImgInput.value = '';
+    frontImgInput.value = '';
+    backOpacityInput.value = 1;
+    frontOpacityInput.value = 1;
+    cardSizeInput.value = 126;
   });
 })();
 </script>
