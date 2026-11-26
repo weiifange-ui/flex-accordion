@@ -179,6 +179,33 @@
     background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; color: var(--ink);
   }
 
+  /*
+    五排顏色方塊：每一排都是獨立的 flex container（display: flex），
+    裡面放同一組六個顏色，只是排列順序不同——
+    flex-direction 預設就是 row，所以每排自然是橫向排列，
+    flex:1 讓六個方塊平分這一排的寬度。
+    滑鼠移上去變色是單純的 :hover + filter，跟 flex 本身無關，
+    只是順便展示「flex 排版」跟「hover 視覺效果」可以疊加，互不干擾。
+  */
+  .color-demo { margin-top: 32px; }
+  .color-demo h2 { font-size: 15px; margin: 0 0 14px; }
+  .color-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .color-block {
+    flex: 1;
+    height: 60px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.2s ease, transform 0.15s ease;
+  }
+  .color-block:hover {
+    filter: brightness(1.4) saturate(1.15);
+    transform: translateY(-3px);
+  }
+
   .live-math {
     margin-top: 14px;
     padding: 14px 16px;
@@ -227,6 +254,11 @@
       <span class="val">px</span>
     </div>
     <button class="reset-btn" id="resetBtn">取消收縮</button>
+  </div>
+
+  <div class="color-demo">
+    <h2>同一組顏色，五排不同排列順序（滑鼠移上去變亮）</h2>
+    <div id="colorRows"></div>
   </div>
 
   <div class="lesson">
@@ -322,6 +354,38 @@
   });
 
   updateLiveMath();
+})();
+
+/*
+  五排顏色方塊：用同一組六色，照五種不同順序排出來。
+  用迴圈產生，而不是手動複製貼上六個 div 五次——
+  這樣顏色或排數要調整時，只要改這裡的資料，不用一行一行改 HTML。
+*/
+(function(){
+  var baseColors = ['#3d6b8a', '#4a7a5c', '#8a6a3d', '#6a4a8a', '#8a4a5c', '#4a5a8a'];
+
+  // 五種排列順序（都是同一組六個顏色的索引，只是順序不同）
+  var orders = [
+    [0, 1, 2, 3, 4, 5], // 原始順序
+    [1, 2, 3, 4, 5, 0], // 整排往前挪一格
+    [2, 3, 4, 5, 0, 1], // 再挪一格
+    [5, 4, 3, 2, 1, 0], // 完全反過來
+    [0, 2, 4, 1, 3, 5]  // 間隔跳著排
+  ];
+
+  var wrap = document.getElementById('colorRows');
+
+  orders.forEach(function(order){
+    var row = document.createElement('div');
+    row.className = 'color-row';
+    order.forEach(function(colorIndex){
+      var block = document.createElement('div');
+      block.className = 'color-block';
+      block.style.backgroundColor = baseColors[colorIndex];
+      row.appendChild(block);
+    });
+    wrap.appendChild(row);
+  });
 })();
 </script>
 </body>
