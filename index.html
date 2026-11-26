@@ -88,9 +88,11 @@
 
   /* 有面板被展開時（.has-active），其他沒被點的面板縮小，
      而且文字改成直書，模擬真實圖片牆「縮窄時文字側過來」的手感 */
-  .accordion.has-active .panel:not(.active) {
-    flex-grow: var(--inactive-grow, 0.4);
-  }
+  /*
+    朋友的洞察：其他塊完全不用另外調低，維持預設的 flex-grow: 1 就好。
+    因為 flex-grow 看的是比例，只要展開那塊的數字相對夠大，
+    其他塊自然會被比例擠小，不需要多寫一條規則去手動調低它們。
+  */
   .accordion.has-active .panel:not(.active) .caption {
     writing-mode: vertical-rl;
     text-orientation: mixed;
@@ -217,11 +219,7 @@
   <div class="controls">
     <div class="control-group">
       <label for="activeInput">展開倍率</label>
-      <input type="number" id="activeInput" min="1" max="40" step="0.5" value="10">
-    </div>
-    <div class="control-group">
-      <label for="inactiveInput">收縮倍率</label>
-      <input type="number" id="inactiveInput" min="0.05" max="2" step="0.05" value="0.4">
+      <input type="number" id="activeInput" min="1" max="60" step="0.5" value="25">
     </div>
     <div class="control-group">
       <label for="minWidthInput">最小寬度</label>
@@ -242,6 +240,7 @@
       <li>全部都沒設定，或都設一樣的數字 → 平分</li>
       <li>某一項的數字特別大 → 它拿走的剩餘空間比例也跟著變大</li>
       <li><code>min-width</code> 是底線，算出來的寬度再小，也不會小於這個數字</li>
+      <li><strong>只要讓展開那塊的數字夠大，其他塊完全不用動</strong>——因為比例自己會把其他塊擠小，不需要額外去調低它們</li>
     </ul>
     <p>下面這塊數字，會跟著你拉滑桿、點展開面板即時重算：</p>
     <div class="live-math" id="liveMath"></div>
@@ -279,7 +278,7 @@
   function updateLiveMath() {
     var hasActive = accordion.classList.contains('has-active');
     var activeGrow = parseFloat(activeInput.value);
-    var inactiveGrow = parseFloat(inactiveInput.value);
+    var othersGrow = 1; // 其他塊完全沒被改動，維持預設值
 
     var lines = [];
     if (!hasActive) {
@@ -288,12 +287,13 @@
       lines.push('每塊拿到：100% ÷ ' + panelCount + ' ≈ ' + each + '%');
     } else {
       var othersCount = panelCount - 1;
-      var total = activeGrow + inactiveGrow * othersCount;
+      var total = activeGrow + othersGrow * othersCount;
       var activePct = (activeGrow / total * 100).toFixed(1);
-      var otherPct = (inactiveGrow / total * 100).toFixed(1);
-      lines.push('總份數 = ' + activeGrow + ' + (' + inactiveGrow + ' × ' + othersCount + ') = ' + total.toFixed(2));
+      var otherPct = (othersGrow / total * 100).toFixed(1);
+      lines.push('其他塊沒被動過，還是 flex-grow: 1');
+      lines.push('總份數 = ' + activeGrow + ' + (1 × ' + othersCount + ') = ' + total.toFixed(2));
       lines.push('展開那塊：' + activeGrow + ' ÷ ' + total.toFixed(2) + ' ≈ ' + activePct + '%');
-      lines.push('其他每塊：' + inactiveGrow + ' ÷ ' + total.toFixed(2) + ' ≈ ' + otherPct + '%');
+      lines.push('其他每塊：1 ÷ ' + total.toFixed(2) + ' ≈ ' + otherPct + '%');
     }
     liveMath.textContent = lines.join('\n');
   }
@@ -302,17 +302,12 @@
   // 最小寬度則是任何時候都即時生效（因為 min-width 不受 .active 狀態影響）
   var root = document.documentElement;
   var activeInput = document.getElementById('activeInput');
-  var inactiveInput = document.getElementById('inactiveInput');
   var minWidthInput = document.getElementById('minWidthInput');
   var resetBtn = document.getElementById('resetBtn');
 
   // input 事件在數字輸入框上，打字、點輸入框內建的上下箭頭、或按鍵盤的 ↑↓ 都會觸發
   activeInput.addEventListener('input', function(e){
     root.style.setProperty('--active-grow', e.target.value);
-    updateLiveMath();
-  });
-  inactiveInput.addEventListener('input', function(e){
-    root.style.setProperty('--inactive-grow', e.target.value);
     updateLiveMath();
   });
   minWidthInput.addEventListener('input', function(e){
