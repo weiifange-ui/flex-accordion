@@ -222,6 +222,9 @@
   .memory-card:not(.flipped):not(.matched):hover {
     transform: translateY(-4px);
   }
+  .memory-card:not(.flipped):not(.matched):hover .card-content {
+    filter: brightness(1.4) saturate(1.15);
+  }
 
   .card-content {
     position: relative;
@@ -405,7 +408,7 @@
   </div>
 
   <div class="color-demo">
-    <h2>記憶翻牌（完整 52 張，A~K，四種花色，點數配對）<span style="font-size:11px; color:var(--ink-soft); font-weight:400;"> — v8</span></h2>
+    <h2>記憶翻牌（完整 52 張，A~K，四種花色，點數配對）<span style="font-size:11px; color:var(--ink-soft); font-weight:400;"> — v9</span></h2>
     <div class="memory-game" id="memoryGame"></div>
     <p class="game-status" id="gameStatus">翻兩張，點數相同就算配對（花色不用一樣）</p>
 
