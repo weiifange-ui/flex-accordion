@@ -132,6 +132,26 @@
     color: var(--ink-soft);
   }
   .control-group input[type="range"] { accent-color: #3d6b8a; }
+  .control-group input[type="number"] {
+    width: 64px;
+    font: inherit;
+    color: var(--ink);
+    background: rgba(0,0,0,0.04);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 6px;
+  }
+  .reset-btn {
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: rgba(0,0,0,0.04);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 8px 18px;
+    cursor: pointer;
+  }
+  .reset-btn:hover { border-color: var(--accent); }
   .control-group .val {
     font-family: "SFMono-Regular", Consolas, monospace;
     color: var(--ink);
@@ -192,24 +212,23 @@
     <div class="panel p6" data-i="5"><span class="caption">海</span></div>
   </div>
 
-  <p class="hint">點一下展開，再點一次收回</p>
+  <p class="hint">點一下展開，再點一次收回，或按下面的按鈕取消收縮</p>
 
   <div class="controls">
     <div class="control-group">
       <label for="activeInput">展開倍率</label>
-      <input type="range" id="activeInput" min="1" max="40" step="0.5" value="10">
-      <span class="val" id="activeVal">10</span>
+      <input type="number" id="activeInput" min="1" max="40" step="0.5" value="10">
     </div>
     <div class="control-group">
       <label for="inactiveInput">收縮倍率</label>
-      <input type="range" id="inactiveInput" min="0.05" max="2" step="0.05" value="0.4">
-      <span class="val" id="inactiveVal">0.40</span>
+      <input type="number" id="inactiveInput" min="0.05" max="2" step="0.05" value="0.4">
     </div>
     <div class="control-group">
       <label for="minWidthInput">最小寬度</label>
-      <input type="range" id="minWidthInput" min="10" max="120" step="2" value="48">
-      <span class="val" id="minWidthVal">48px</span>
+      <input type="number" id="minWidthInput" min="10" max="120" step="2" value="48">
+      <span class="val">px</span>
     </div>
+    <button class="reset-btn" id="resetBtn">取消收縮</button>
   </div>
 
   <div class="lesson">
@@ -283,25 +302,28 @@
   // 最小寬度則是任何時候都即時生效（因為 min-width 不受 .active 狀態影響）
   var root = document.documentElement;
   var activeInput = document.getElementById('activeInput');
-  var activeVal = document.getElementById('activeVal');
   var inactiveInput = document.getElementById('inactiveInput');
-  var inactiveVal = document.getElementById('inactiveVal');
   var minWidthInput = document.getElementById('minWidthInput');
-  var minWidthVal = document.getElementById('minWidthVal');
+  var resetBtn = document.getElementById('resetBtn');
 
+  // input 事件在數字輸入框上，打字、點輸入框內建的上下箭頭、或按鍵盤的 ↑↓ 都會觸發
   activeInput.addEventListener('input', function(e){
-    activeVal.textContent = e.target.value;
     root.style.setProperty('--active-grow', e.target.value);
     updateLiveMath();
   });
   inactiveInput.addEventListener('input', function(e){
-    inactiveVal.textContent = parseFloat(e.target.value).toFixed(2);
     root.style.setProperty('--inactive-grow', e.target.value);
     updateLiveMath();
   });
   minWidthInput.addEventListener('input', function(e){
-    minWidthVal.textContent = e.target.value + 'px';
     root.style.setProperty('--panel-min-width', e.target.value + 'px');
+  });
+
+  // 取消收縮：邏輯跟「再點一次已展開的那塊」完全一樣，直接重用同一段清除邏輯
+  resetBtn.addEventListener('click', function(){
+    panels.forEach(function(p){ p.classList.remove('active'); });
+    accordion.classList.remove('has-active');
+    updateLiveMath();
   });
 
   updateLiveMath();
