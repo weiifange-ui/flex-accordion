@@ -56,14 +56,14 @@
     flex-grow: 1;
     flex-shrink: 1;
     flex-basis: 0;
-    min-width: 48px;
+    min-width: var(--panel-min-width, 48px);
     position: relative;
     cursor: pointer;
     overflow: hidden;
     display: flex;
     align-items: flex-end;
     /* 寬度的動畫完全靠 flex-grow 的 transition，不是 width 或 transform */
-    transition: flex-grow 0.5s cubic-bezier(.22,.61,.36,1);
+    transition: flex-grow 0.5s cubic-bezier(.22,.61,.36,1), min-width 0.3s ease;
   }
 
   .panel::before {
@@ -89,7 +89,7 @@
   /* 有面板被展開時（.has-active），其他沒被點的面板縮小，
      而且文字改成直書，模擬真實圖片牆「縮窄時文字側過來」的手感 */
   .accordion.has-active .panel:not(.active) {
-    flex-grow: 0.4;
+    flex-grow: var(--inactive-grow, 0.4);
   }
   .accordion.has-active .panel:not(.active) .caption {
     writing-mode: vertical-rl;
@@ -98,7 +98,7 @@
   }
 
   .panel.active {
-    flex-grow: 10;
+    flex-grow: var(--active-grow, 10);
   }
 
   .p1 { background: linear-gradient(135deg, #3d6b8a, #214257); }
@@ -110,6 +110,63 @@
 
   .hint {
     text-align: center; color: var(--ink-soft); font-size: 12px; margin-top: 16px;
+  }
+
+  /* 控制欄本身也是 flex-wrap，視窗窄的時候三組會自動換行 */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+    margin-top: 24px;
+    padding: 14px 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .control-group input[type="range"] { accent-color: #3d6b8a; }
+  .control-group .val {
+    font-family: "SFMono-Regular", Consolas, monospace;
+    color: var(--ink);
+    min-width: 34px;
+    text-align: right;
+  }
+
+  .lesson {
+    margin-top: 28px;
+    padding: 20px 22px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.9;
+  }
+  .lesson h2 {
+    font-size: 15px;
+    margin: 0 0 10px;
+  }
+  .lesson p { margin: 0 0 12px; color: var(--ink-soft); }
+  .lesson ul { margin: 0 0 12px; padding-left: 20px; color: var(--ink-soft); }
+  .lesson code {
+    background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; color: var(--ink);
+  }
+
+  .live-math {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: rgba(61,107,138,0.08);
+    border: 1px dashed var(--accent);
+    border-radius: 8px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+    line-height: 2;
+    white-space: pre-wrap;
   }
 
   @media (max-width: 640px) {
@@ -136,6 +193,40 @@
   </div>
 
   <p class="hint">點一下展開，再點一次收回</p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="activeInput">展開倍率</label>
+      <input type="range" id="activeInput" min="1" max="40" step="0.5" value="10">
+      <span class="val" id="activeVal">10</span>
+    </div>
+    <div class="control-group">
+      <label for="inactiveInput">收縮倍率</label>
+      <input type="range" id="inactiveInput" min="0.05" max="2" step="0.05" value="0.4">
+      <span class="val" id="inactiveVal">0.40</span>
+    </div>
+    <div class="control-group">
+      <label for="minWidthInput">最小寬度</label>
+      <input type="range" id="minWidthInput" min="10" max="120" step="2" value="48">
+      <span class="val" id="minWidthVal">48px</span>
+    </div>
+  </div>
+
+  <div class="lesson">
+    <h2>flex-grow 在算什麼</h2>
+    <p>
+      <code>flex-grow</code> 分配的是「剩餘空間」，數字是<strong>比例</strong>，不是實際寬度。
+      算法只有一條：先把所有項目的 <code>flex-grow</code> 加起來當分母，
+      每一項自己的數字當分子，算出來的比例就是它能拿到的剩餘空間。
+    </p>
+    <ul>
+      <li>全部都沒設定，或都設一樣的數字 → 平分</li>
+      <li>某一項的數字特別大 → 它拿走的剩餘空間比例也跟著變大</li>
+      <li><code>min-width</code> 是底線，算出來的寬度再小，也不會小於這個數字</li>
+    </ul>
+    <p>下面這塊數字，會跟著你拉滑桿、點展開面板即時重算：</p>
+    <div class="live-math" id="liveMath"></div>
+  </div>
 </div>
 
 <script>
@@ -155,8 +246,65 @@
         panel.classList.add('active');
         accordion.classList.add('has-active');
       }
+      updateLiveMath();
     });
   });
+
+  /*
+    教學用的即時計算：跟畫面上真正的 CSS 完全對應同一套公式，
+    沒有另外猜或估算，就是把目前的 flex-grow 數字原封不動拿來算一次。
+  */
+  var liveMath = document.getElementById('liveMath');
+  var panelCount = panels.length;
+
+  function updateLiveMath() {
+    var hasActive = accordion.classList.contains('has-active');
+    var activeGrow = parseFloat(activeInput.value);
+    var inactiveGrow = parseFloat(inactiveInput.value);
+
+    var lines = [];
+    if (!hasActive) {
+      var each = (100 / panelCount).toFixed(1);
+      lines.push('目前沒有展開：' + panelCount + ' 塊都是 flex-grow: 1，平分空間');
+      lines.push('每塊拿到：100% ÷ ' + panelCount + ' ≈ ' + each + '%');
+    } else {
+      var othersCount = panelCount - 1;
+      var total = activeGrow + inactiveGrow * othersCount;
+      var activePct = (activeGrow / total * 100).toFixed(1);
+      var otherPct = (inactiveGrow / total * 100).toFixed(1);
+      lines.push('總份數 = ' + activeGrow + ' + (' + inactiveGrow + ' × ' + othersCount + ') = ' + total.toFixed(2));
+      lines.push('展開那塊：' + activeGrow + ' ÷ ' + total.toFixed(2) + ' ≈ ' + activePct + '%');
+      lines.push('其他每塊：' + inactiveGrow + ' ÷ ' + total.toFixed(2) + ' ≈ ' + otherPct + '%');
+    }
+    liveMath.textContent = lines.join('\n');
+  }
+
+  // 控制欄：改的是 CSS 變數，展開/收縮倍率要等下一次點擊才會套用，
+  // 最小寬度則是任何時候都即時生效（因為 min-width 不受 .active 狀態影響）
+  var root = document.documentElement;
+  var activeInput = document.getElementById('activeInput');
+  var activeVal = document.getElementById('activeVal');
+  var inactiveInput = document.getElementById('inactiveInput');
+  var inactiveVal = document.getElementById('inactiveVal');
+  var minWidthInput = document.getElementById('minWidthInput');
+  var minWidthVal = document.getElementById('minWidthVal');
+
+  activeInput.addEventListener('input', function(e){
+    activeVal.textContent = e.target.value;
+    root.style.setProperty('--active-grow', e.target.value);
+    updateLiveMath();
+  });
+  inactiveInput.addEventListener('input', function(e){
+    inactiveVal.textContent = parseFloat(e.target.value).toFixed(2);
+    root.style.setProperty('--inactive-grow', e.target.value);
+    updateLiveMath();
+  });
+  minWidthInput.addEventListener('input', function(e){
+    minWidthVal.textContent = e.target.value + 'px';
+    root.style.setProperty('--panel-min-width', e.target.value + 'px');
+  });
+
+  updateLiveMath();
 })();
 </script>
 </body>
