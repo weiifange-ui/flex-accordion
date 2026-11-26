@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>手風琴圖片牆（flex-grow 驅動）</title>
+<style>
+  :root {
+    --bg: #faf8f4;
+    --ink: #221f1a;
+    --ink-soft: #6b6458;
+    --line: #e4ded2;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17140f;
+      --ink: #f0ebe0;
+      --ink-soft: #a89c8c;
+      --line: #35302688;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", -apple-system, sans-serif;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .page { max-width: 1000px; margin: 0 auto; padding: 32px 20px 60px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  p.note {
+    color: var(--ink-soft); font-size: 13px; line-height: 1.7; margin: 0 0 28px;
+  }
+  code {
+    background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px;
+  }
+
+  /*
+    .accordion 本身是 flex container，核心只有這三行：
+    每個 .panel 預設 flex-grow:1，大家平分空間；
+    沒有任何 width 在控制寬度，寬度完全是 flex 自己算出來的
+  */
+  .accordion {
+    display: flex;
+    height: 440px;
+    gap: 6px;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .panel {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 48px;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+    /* 寬度的動畫完全靠 flex-grow 的 transition，不是 width 或 transform */
+    transition: flex-grow 0.5s cubic-bezier(.22,.61,.36,1);
+  }
+
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.55) 100%);
+  }
+
+  .caption {
+    position: relative;
+    z-index: 1;
+    padding: 16px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    transition: writing-mode 0s;
+  }
+
+  /* 有面板被展開時（.has-active），其他沒被點的面板縮小，
+     而且文字改成直書，模擬真實圖片牆「縮窄時文字側過來」的手感 */
+  .accordion.has-active .panel:not(.active) {
+    flex-grow: 0.4;
+  }
+  .accordion.has-active .panel:not(.active) .caption {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    padding: 16px 8px;
+  }
+
+  .panel.active {
+    flex-grow: 10;
+  }
+
+  .p1 { background: linear-gradient(135deg, #3d6b8a, #214257); }
+  .p2 { background: linear-gradient(135deg, #4a7a5c, #27432f); }
+  .p3 { background: linear-gradient(135deg, #8a6a3d, #563c21); }
+  .p4 { background: linear-gradient(135deg, #6a4a8a, #3c2756); }
+  .p5 { background: linear-gradient(135deg, #8a4a5c, #562733); }
+  .p6 { background: linear-gradient(135deg, #4a5a8a, #27304f); }
+
+  .hint {
+    text-align: center; color: var(--ink-soft); font-size: 12px; margin-top: 16px;
+  }
+
+  @media (max-width: 640px) {
+    .accordion { height: 320px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>手風琴圖片牆</h1>
+  <p class="note">
+    點任一張看它展開，再點一次收回。效果完全靠 <code>flex-grow</code> 驅動：
+    被點的那塊變成 <code>flex-grow: 10</code>，其他降到 <code>flex-grow: 0.4</code>，
+    沒有用到 <code>width</code>，也沒有用到 <code>transform</code>。
+  </p>
+
+  <div class="accordion" id="accordion">
+    <div class="panel p1" data-i="0"><span class="caption">山</span></div>
+    <div class="panel p2" data-i="1"><span class="caption">林</span></div>
+    <div class="panel p3" data-i="2"><span class="caption">沙漠</span></div>
+    <div class="panel p4" data-i="3"><span class="caption">夜城</span></div>
+    <div class="panel p5" data-i="4"><span class="caption">荒原</span></div>
+    <div class="panel p6" data-i="5"><span class="caption">海</span></div>
+  </div>
+
+  <p class="hint">點一下展開，再點一次收回</p>
+</div>
+
+<script>
+(function(){
+  var accordion = document.getElementById('accordion');
+  var panels = accordion.querySelectorAll('.panel');
+
+  panels.forEach(function(panel){
+    panel.addEventListener('click', function(){
+      var alreadyActive = panel.classList.contains('active');
+      panels.forEach(function(p){ p.classList.remove('active'); });
+
+      if (alreadyActive) {
+        // 再點一次同一塊 → 收回成全部平分
+        accordion.classList.remove('has-active');
+      } else {
+        panel.classList.add('active');
+        accordion.classList.add('has-active');
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
